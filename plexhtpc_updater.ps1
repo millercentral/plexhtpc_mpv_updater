@@ -22,9 +22,18 @@ $temp_path = "$env:TEMP\plexhtpc_updater\"
 $zip_tool = "nanazipc"
 
 WriteLog "Starting"
+if (-Not (Test-Path -Path ($local_install_path + "Plex HTPC.exe") -PathType Leaf)) {
+    WriteLog "Plex HTPC does not appear to be installed at the specified path ($local_install_path). Install manually before running updater."
+    WriteLog "Exiting"
+    Exit
+}
 # Get the latest Plex HTPC download information
-$json = Invoke-WebRequest -Uri "https://plex.tv/api/downloads/7.json" | ConvertFrom-Json
+$json = Invoke-WebRequest -Uri "https://plex.tv/api/downloads/7.json" | ConvertFrom-Json -ErrorAction SilentlyContinue
 $download = $json.computer.Windows.releases.url
+if ( -Not $download ) {
+    WriteLog "Something went wrong fetching/parsing json data from plex.tv - exiting"
+    Exit
+}
 $download_checksum = $json.computer.Windows.releases.checksum
 $download_version = $json.computer.Windows.version.Substring(0,$json.computer.Windows.version.IndexOf("-"))
 $download_filename = $download.Substring($download.LastIndexOf("/")+1)
@@ -55,13 +64,18 @@ if ($is_new -eq "True") {
     }
     New-Item -Path $temp_path -ItemType Directory
     WriteLog "Downloading Plex Installer from [ $download ]"
-    Invoke-WebRequest -Uri $download -OutFile ($temp_path + $download_filename)
+    Invoke-WebRequest -Uri $download -OutFile ($temp_path + $download_filename) -ErrorAction SilentlyContinue
+    if (-Not (Test-Path -Path ($temp_path + $download_filename) -PathType Leaf)) {
+        WriteLog "Error downloading plex update. Exiting"
+        Remove-Item $temp_path -Recurse -Force
+        Exit
+    }
     $file_hash = Get-FileHash ($temp_path + $download_filename) -Algorithm "SHA1"
     if ($download_checksum -ne $file_hash.Hash) {
         # File is bad, exit!
         WriteLog ("Plex Update hash did not match! Expected: [$download_checksum] Actual: [" + $file_hash.Hash +"]")
         WriteLog "Cleaning up temp directory"
-        Remove-Item $temp_path -Recurse -Force
+        Remove-Item $temp_path -Recurse -Force -ErrorAction SilentlyContinue
         Exit
     }
     WriteLog ("Plex Update hash matched! Expected: [$download_checksum] Actual: [" + $file_hash.Hash +"]")
@@ -74,6 +88,11 @@ if ($is_new -eq "True") {
     # <TODO> All of this needs error trapping and validation
     $mpv_lib_webpage = Invoke-WebRequest -Uri "https://sourceforge.net/projects/mpv-player-windows/files/libmpv/"
     $mpv_download_url = [regex]::match($mpv_lib_webpage.Content, "https:\/\/sourceforge\.net\/projects\/mpv-player-windows\/files\/libmpv\/mpv-dev-x86_64.*\/download").Value
+    If (-Not $mpv_download_url) {
+        WriteLog "Error scraping the libmpv download url. Aborting!"
+        Remove-Item $temp_path -Recurse -Force -ErrorAction SilentlyContinue
+        Exit
+    }
     $strstart = $mpv_download_url.IndexOf("/mpv-dev")+1
     $strlen = $mpv_download_url.IndexOf("/download") - $strstart
     $mpv_filename = $mpv_download_url.Substring($strstart,$strlen)
