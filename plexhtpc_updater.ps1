@@ -131,7 +131,7 @@ if ($is_new -eq "True") {
 
     # Next copy and rename the updated mpv library
     WriteLog "Copying updated mpv lib"
-    Copy-Item -Path ($temp_path + "lib\mpv-2.dll") -Destination ($local_install_path + "mpv-1.dll") -Force >> $logfile
+    Copy-Item -Path ($temp_path + "lib\mpv-2.dll") -Destination ($local_install_path) -Force >> $logfile
 
     # Write out a local version file so we know what version is installed
     WriteLog "Saving version file for next run"
